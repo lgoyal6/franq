@@ -312,7 +312,7 @@ func TestCrashRecovery(t *testing.T) {
 	if len(lost) > 0 {
 		t.Fatalf("INVARIANT 1 BROKEN — %d acknowledged enqueues lost, e.g. %v", len(lost), lost[:min(5, len(lost))])
 	}
-	t.Logf("crash matrix: %d confirmed enqueues, %d confirmed acks, %d maybe-enq, %d maybe-ack, %d nacks — no loss, no zombies",
+	t.Logf("crash matrix: %d confirmed enqueues, %d confirmed acks, %d maybe-enq, %d maybe-ack, %d nacks - no loss, no zombies",
 		len(acct.enqOK), len(acct.ackOK), len(acct.maybeEnq), len(acct.maybeAck), len(acct.nacked))
 }
 

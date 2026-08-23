@@ -182,7 +182,7 @@ surgically chosen points inside the storage engine. A typical run:
 
 ```
 crash matrix: 2851 confirmed enqueues, 2868 confirmed acks,
-              67 maybe-enq, 54 maybe-ack, 113 nacks — no loss, no zombies
+              67 maybe-enq, 54 maybe-ack, 113 nacks - no loss, no zombies
 ```
 
 ---
