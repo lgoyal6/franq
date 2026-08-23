@@ -1,7 +1,7 @@
 # franq ⚡
 
 *A Frankenstein queue: FIFO, LIFO, priority, delay and anti-starvation aging stitched
-onto one spine — an HTTP queue server with its own group-commit write-ahead log.
+onto one spine - an HTTP queue server with its own group-commit write-ahead log.
 Go stdlib only. Zero dependencies. It's alive.*
 
 ```
@@ -13,7 +13,7 @@ franqd: it's alive ⚡ listening on [::]:1818, data in ./franq-data
 
 ## What it is
 
-An HTTP application that is a queue — where the behaviors compose instead of being
+An HTTP application that is a queue - where the behaviors compose instead of being
 separate queue types:
 
 | Capability | How |
@@ -21,7 +21,7 @@ separate queue types:
 | FIFO / LIFO | per-queue `order` config (the tie-break direction) |
 | Priority | per-message `priority` 0–255, higher first |
 | Delay | per-message `delay_ms`; invisible until it expires |
-| Priority aging | per-queue `aging_rate` λ: +λ effective priority per second waited — starvation is impossible |
+| Priority aging | per-queue `aging_rate` λ: +λ effective priority per second waited - starvation is impossible |
 | Lease + ack | dequeue leases under a visibility timeout; ack deletes, nack/crash/timeout replays |
 | Dead-letter queues | after `max_deliveries` attempts a message moves to `name.dlq` (a normal, inspectable queue) |
 | Time-travel replay | `POST /replay` re-enqueues already-completed messages from WAL history |
@@ -29,8 +29,8 @@ separate queue types:
 So yes: a *delayed, priority, aging LIFO queue* is one `POST /v1/queues` away.
 
 **Hard requirements, met:** data is persisted and durable across restarts (own WAL +
-snapshots, fsync before any acknowledgement — proven by a `kill -9` crash matrix);
-storage is not delegated to any queue or database (files and `fsync`, nothing else —
+snapshots, fsync before any acknowledgement - proven by a `kill -9` crash matrix);
+storage is not delegated to any queue or database (files and `fsync`, nothing else  - 
 `go.mod` has zero requirements); fully concurrent (group commit is *faster* with
 concurrent producers; long-poll consumers park on condition-style waiters).
 
@@ -70,24 +70,24 @@ and climbing out with it, and replaying acked history.
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /v1/queues` | create — `{name, order, aging_rate, max_deliveries, default_lease_ms}` |
+| `POST /v1/queues` | create - `{name, order, aging_rate, max_deliveries, default_lease_ms}` |
 | `GET /v1/queues` · `GET /v1/queues/{q}` | list / stats |
 | `DELETE /v1/queues/{q}` | delete (and its DLQ) |
-| `POST /v1/queues/{q}/messages` | batch enqueue — `{messages:[{body, priority?, delay_ms?}]}` |
-| `POST /v1/queues/{q}/dequeue` | `{max?, wait_ms?, lease_ms?}` — long-polls; returns messages + lease tokens |
-| `POST /v1/queues/{q}/ack` | `{acks:[{id, token}]}` — stale token ⇒ 409 `lease_lost` |
-| `POST /v1/queues/{q}/nack` | `{id, token, delay_ms?}` — return early with optional backoff |
+| `POST /v1/queues/{q}/messages` | batch enqueue - `{messages:[{body, priority?, delay_ms?}]}` |
+| `POST /v1/queues/{q}/dequeue` | `{max?, wait_ms?, lease_ms?}` - long-polls; returns messages + lease tokens |
+| `POST /v1/queues/{q}/ack` | `{acks:[{id, token}]}` - stale token ⇒ 409 `lease_lost` |
+| `POST /v1/queues/{q}/nack` | `{id, token, delay_ms?}` - return early with optional backoff |
 | `POST /v1/queues/{q}/extend` | lease heartbeat for long jobs |
-| `POST /v1/queues/{q}/replay` | `{from?, to?, limit?}` (RFC3339) — time travel |
+| `POST /v1/queues/{q}/replay` | `{from?, to?, limit?}` (RFC3339) - time travel |
 | `GET /healthz` | liveness |
 
 Message ids are decimal strings (uint64 would overflow JS numbers). Bodies are JSON
-strings — text payloads; base64 binary yourself. Delays are relative (`delay_ms`), so
+strings - text payloads; base64 binary yourself. Delays are relative (`delay_ms`), so
 client clocks are never trusted.
 
 ## Design
 
-### No modes — only sort keys
+### No modes - only sort keys
 
 There is no FIFO code path, no LIFO code path, no priority branch. Every message
 carries `(priority, seq, visible_at)`; every ready message sits in **one heap under one
@@ -107,7 +107,7 @@ p₁ + λ(t−s₁) > p₂ + λ(t−s₂)   ⇔   p₁ − λ·s₁ > p₂ − �
 So the heap key `p − λ·start` is **static**: exact continuous aging with zero
 re-heapification, no sweeps, no timers. `start` is the *visibility* time, so a delayed
 message doesn't arrive pre-aged. One honest consequence, on purpose: with λ > 0,
-equal-priority messages drain oldest-first even on a LIFO queue — LIFO starves old
+equal-priority messages drain oldest-first even on a LIFO queue - LIFO starves old
 messages by design and aging exists to prevent exactly that, so when both are
 configured, aging wins. `igor demo starvation` shows it rather than hiding it.
 
@@ -127,7 +127,7 @@ HTTP handler → encode record → committer (batch + ONE fsync) → applier →
   | fsync per record (1 producer) | 2.76 ms | ~360 records/s |
   | group commit (64 producers) | 13.8 µs | ~72,000 records/s |
 
-  **200× — durability that gets *faster* under concurrency.**
+  **200× - durability that gets *faster* under concurrency.**
 
 * **The one invariant everything hangs on:** *nothing is externally observable before
   its record is fsynced.* Enqueue 200s, ack 200s and heap insertion all happen after
@@ -141,7 +141,7 @@ HTTP handler → encode record → committer (batch + ONE fsync) → applier →
 * **Snapshots + retention.** Sealed segments trigger a background snapshot
   (tmp → fsync → rename; the old snapshot survives until the new one is durable).
   Snapshot ≠ retention: `-retain-bytes` keeps sealed segments after they're
-  compacted-from, because retained history **is** the replay window — Kafka's
+  compacted-from, because retained history **is** the replay window - Kafka's
   insight, applied to a queue. `nextMsgID` lives in the snapshot header so ids are
   never reused even when their records are gone.
 
@@ -149,7 +149,7 @@ HTTP handler → encode record → committer (batch + ONE fsync) → applier →
   retrying would silently lie about durability. franq fails every waiter, exits, and
   lets recovery re-read the truth from disk.
 
-* **Leases are deliberately NOT persisted.** Dequeue is memory-only — the hot path
+* **Leases are deliberately NOT persisted.** Dequeue is memory-only - the hot path
   pays zero fsyncs. A crash makes in-flight messages visible again: that's the
   at-least-once contract, the same trade SQS makes. The ack/nack/expiry race is
   serialized by lease-entry removal under the queue mutex *before* logging, so the
@@ -158,7 +158,7 @@ HTTP handler → encode record → committer (batch + ONE fsync) → applier →
 ### Concurrency
 
 Go's HTTP server gives a goroutine per request; the long-poll *waiter is the handler
-itself* — nothing spawned, nothing leaked, no lost wakeups (registration shares the
+itself* - nothing spawned, nothing leaked, no lost wakeups (registration shares the
 mutex with insertion+notify), one wakeup per newly-ready message (no thundering herd).
 Group commit turns producer concurrency into throughput. The whole suite runs under
 `-race`.
@@ -196,15 +196,15 @@ Three layers, all implemented:
 1. **Redelivery (involuntary replay).** Dequeue is a lease, not a removal. Ack
    deletes; nack, lease expiry or a worker crash puts the message back with its
    delivery count incremented (persisted via `REQUEUE` records, so counts survive
-   restarts). Stale tokens are rejected — a dead worker can't ack a job that was
+   restarts). Stale tokens are rejected - a dead worker can't ack a job that was
    already redelivered elsewhere. Server crashes revive all in-flight leases:
    at-least-once, honestly stated.
 2. **Dead-letter queues (replay circuit-breaker).** After `max_deliveries` attempts,
-   the message moves to `name.dlq` — logged as ENQUEUE-into-dlq *then* ACK-of-original
+   the message moves to `name.dlq` - logged as ENQUEUE-into-dlq *then* ACK-of-original
    (add before remove: a crash between the two yields a duplicate, never a loss). The
    DLQ is a normal queue: inspect it, drain it, replay it.
 3. **Time travel (voluntary replay).** The WAL is an event log, and retention is
-   decoupled from compaction — so `POST /replay {from, to}` re-enqueues copies of
+   decoupled from compaction - so `POST /replay {from, to}` re-enqueues copies of
    *already-acked* messages from history, with `origin_id` linking each copy to its
    source. Reprocess yesterday's orders after a bug fix. SQS, RabbitMQ: can't.
 
@@ -213,7 +213,7 @@ Three layers, all implemented:
 The storage engine already is one: an ordered, retained log with consumers positioned
 on it. A queue is the special case of *one* cursor whose acks delete. The refactor:
 
-1. **Subscriptions as named cursors.** `POST /v1/queues/{q}/subscriptions {name}` —
+1. **Subscriptions as named cursors.** `POST /v1/queues/{q}/subscriptions {name}`  - 
    each holds `(ack'd-through position, pending set)`. Today's queue becomes the
    implicit single subscription.
 2. **Acks move cursors instead of deleting.** `ACK(sub, id)` records per-subscription
@@ -221,7 +221,7 @@ on it. A queue is the special case of *one* cursor whose acks delete. The refact
 3. **Retention becomes the deletion policy.** Already true here (`-retain-bytes`);
    segments compact when every subscription has passed them.
 4. **Per-subscription delivery state.** The lease table and DLQ become per-subscription
-   (consumer groups fall out free: N workers sharing one subscription already works —
+   (consumer groups fall out free: N workers sharing one subscription already works  - 
    that's just today's queue).
 5. **Fan-out.** ENQUEUE applies to every subscription's view; the delay/priority/aging
    machinery stays per-subscription, which yields something Pulsar doesn't offer:
@@ -237,20 +237,20 @@ the batch stream, snapshots are ready-made install points). Producer idempotency
 + a dedup window for exactly-once enqueue. Cron/recurring messages (the delay heap
 generalizes). Message TTLs. Prometheus metrics + OTel tracing. Auth + multi-tenancy.
 Backpressure quotas. A `peek` API. Compression for large bodies. Each is deliberately
-absent now — small core, every line tested — but none requires re-architecting.
+absent now - small core, every line tested - but none requires re-architecting.
 
 ### Why franq over SQS / RabbitMQ / Pulsar?
 
 **The composition doesn't exist elsewhere.** SQS FIFO: no priority, no LIFO, delay
 capped at 15 minutes, no replay of acked messages. RabbitMQ: priority queues, but a
-starved message stays starved — nothing ages; x-delayed-message is a plugin with known
+starved message stays starved - nothing ages; x-delayed-message is a plugin with known
 loss caveats. Pulsar: replay yes, but priority no, and it's a cluster (brokers +
 BookKeeper + ZooKeeper) you operate. franq gives you *delayed aging priority LIFO with
 time travel* in one flag-configured queue.
 
 **Operational weight.** One static binary, one data directory, zero dependencies.
 `scp` it to a box and you have a durable queue in the time SQS takes to load its
-console. Local-first: dev laptops, CI, edge nodes, air-gapped environments — places
+console. Local-first: dev laptops, CI, edge nodes, air-gapped environments - places
 where an AWS dependency or a three-service cluster is disqualifying.
 
 **Honest durability, measured.** fsync-before-acknowledge with group commit
@@ -258,7 +258,7 @@ where an AWS dependency or a three-service cluster is disqualifying.
 a README that tells you exactly which trade-offs were made (at-least-once, leases not
 persisted, fsync failure = crash).
 
-**When NOT to use franq** — honesty is a feature: it's single-node (no replication —
+**When NOT to use franq** - honesty is a feature: it's single-node (no replication  - 
 your durability floor is the disk), single-process, and unauthenticated. If you need
 five-nines multi-AZ or cross-region fan-out, use SQS/Pulsar and pay their complexity
 tax. franq's niche is the enormous space below that.
