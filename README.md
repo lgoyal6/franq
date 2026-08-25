@@ -34,13 +34,65 @@ storage is not delegated to any queue or database (files and `fsync`, nothing el
 `go.mod` has zero requirements); fully concurrent (group commit is *faster* with
 concurrent producers; long-poll consumers park on condition-style waiters).
 
+## The write path
+
+Everything durable hangs on one rule: nothing is externally observable before its
+record is fsynced. The committer is where that rule is enforced.
+
+```mermaid
+flowchart LR
+  subgraph inflight["per-request goroutines"]
+    P1[producer]
+    P2[producer]
+    P3[producer]
+  end
+  P1 & P2 & P3 --> H["HTTP handler<br/>encode CRC32C record"]
+  H --> C{{"committer<br/>one goroutine<br/>batch N writes, ONE fsync"}}
+  C --> SEG[("WAL segment<br/>append-only")]
+  C -->|"fsync returns"| A["applier<br/>one goroutine<br/>mutates state in log order"]
+  A --> ST["queue state<br/>heaps, leases, aging"]
+  A --> OK["200 to every batched caller"]
+  SEG -.->|"sealed segment"| SNAP[("snapshot<br/>tmp, fsync, rename")]
+  C -.->|"fsync fails"| POISON["fail every waiter<br/>and exit"]
+
+  style C fill:#1f6feb,color:#fff
+  style POISON fill:#b62324,color:#fff
+```
+
+The fsync is the boundary. Enqueue 200s, ack 200s and heap insertion all happen to
+its right, which is why recovery can truncate a torn tail and know it is dropping
+only operations nobody was ever told succeeded.
+
+Batching is what makes that affordable: one fsync serves every producer waiting on
+it, so durability gets **faster** under concurrency rather than slower.
+
+## Recovery
+
+```mermaid
+flowchart LR
+  START([start]) --> SNAP[("load newest<br/>complete snapshot")]
+  SNAP --> REPLAY["replay sealed + open<br/>segments after that cut"]
+  REPLAY --> CHK{"record CRC<br/>valid?"}
+  CHK -->|yes| APPLY["apply to state"]
+  APPLY --> CHK
+  CHK -->|"no, torn tail"| TRUNC["truncate at last good record<br/>and fsync the truncation"]
+  TRUNC --> READY([serving])
+  APPLY -.->|"log exhausted"| READY
+
+  style TRUNC fill:#8250df,color:#fff
+```
+
+Leases are deliberately absent from both diagrams: dequeue is memory-only, so a
+crash makes in-flight messages visible again. That is the at-least-once contract,
+and it is the same trade SQS makes.
+
 ## Quickstart
 
 ```bash
 make build            # → bin/franqd, bin/igor
 ./bin/franqd &        # serve on :1818, data in ./franq-data
 
-# a delayed-priority-LIFO queue with aging, straight from the assignment title
+# a delayed-priority-LIFO queue with aging, all four behaviours on one queue
 curl -s localhost:1818/v1/queues -d '{"name":"jobs","order":"lifo","aging_rate":2}'
 
 curl -s localhost:1818/v1/queues/jobs/messages \
@@ -52,7 +104,7 @@ curl -s localhost:1818/v1/queues/jobs/dequeue -d '{"wait_ms":5000}'
 curl -s localhost:1818/v1/queues/jobs/ack -d '{"acks":[{"id":"1","token":"…"}]}'
 ```
 
-### igor, the lab assistant (the required client application)
+### igor, the lab assistant
 
 ```bash
 ./bin/igor demo all        # five scripted, self-checking scenarios
@@ -187,7 +239,7 @@ crash matrix: 2851 confirmed enqueues, 2868 confirmed acks,
 
 ---
 
-## The assignment questions
+## Design questions, answered
 
 ### How do you handle replay?
 
