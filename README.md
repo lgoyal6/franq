@@ -24,7 +24,7 @@ separate queue types:
 | Priority aging | per-queue `aging_rate` λ: +λ effective priority per second waited - starvation is impossible |
 | Lease + ack | dequeue leases under a visibility timeout; ack deletes, nack/crash/timeout replays |
 | Dead-letter queues | after `max_deliveries` attempts a message moves to `name.dlq` (a normal, inspectable queue) |
-| Time-travel replay | `POST /replay` re-enqueues already-completed messages from WAL history |
+| Time-travel replay | `POST /v1/queues/{q}/replay` re-enqueues already-completed messages from WAL history |
 
 So yes: a *delayed, priority, aging LIFO queue* is one `POST /v1/queues` away.
 
