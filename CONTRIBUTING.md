@@ -37,7 +37,7 @@ make build        # bin/franqd, bin/igor
 make test         # go test ./...
 make race         # the suite under -race, which is how CI runs it
 make vet
-make crashtest    # the kill -9 matrix, ~5 minutes
+make crashtest    # the kill -9 matrix, ~20 seconds
 make bench        # group-commit throughput
 ```
 
