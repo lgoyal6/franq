@@ -54,7 +54,7 @@ func (r *Req) Finish(err error) { r.done <- err }
 func (r *Req) release(err error) { r.done <- err }
 
 // Batch is what one fsync covered. Sealed is nonzero when the active segment
-// was sealed immediately after this batch — the applier uses that as its
+// was sealed immediately after this batch - the applier uses that as its
 // consistent snapshot point (state == exactly end of segment Sealed).
 type Batch struct {
 	Reqs   []*Req
@@ -230,7 +230,7 @@ func (l *Log) View() (sealed []string, active string, activeLen int64, release f
 }
 
 // DeleteSealedUpTo removes sealed segments <= maxSeg (oldest first) while the
-// total sealed bytes exceed RetainBytes. RetainBytes == 0 keeps everything —
+// total sealed bytes exceed RetainBytes. RetainBytes == 0 keeps everything -
 // retention is the time-travel replay window, so the default is maximal.
 func (l *Log) DeleteSealedUpTo(maxSeg uint64) {
 	if l.opts.RetainBytes == 0 {

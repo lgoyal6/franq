@@ -107,7 +107,7 @@ func TestOrderingModes(t *testing.T) {
 }
 
 // TestAgingBeatsPriority: with a large aging rate, an old low-priority
-// message must outrank a fresh high-priority one — the anti-starvation
+// message must outrank a fresh high-priority one - the anti-starvation
 // guarantee, delivered by a static key.
 func TestAgingBeatsPriority(t *testing.T) {
 	b := openBroker(t, t.TempDir(), Options{})
@@ -129,7 +129,7 @@ func TestAgingBeatsPriority(t *testing.T) {
 }
 
 // TestAgingOverridesLIFO documents the intended semantic: among equal
-// priorities, any λ > 0 drains oldest-first even on a LIFO queue — LIFO
+// priorities, any λ > 0 drains oldest-first even on a LIFO queue - LIFO
 // starves old messages by design, aging exists to prevent exactly that, so
 // when both are configured aging wins.
 func TestAgingOverridesLIFO(t *testing.T) {
@@ -332,7 +332,7 @@ func TestReplayTimeTravel(t *testing.T) {
 	if got := drain(t, b, q, 5); len(got) != 3 {
 		t.Fatalf("drained %d", len(got))
 	}
-	// Everything acked; the queue is empty — but history isn't.
+	// Everything acked; the queue is empty - but history isn't.
 	res, err := b.Replay(q, time.Time{}, time.Time{}, 100)
 	if err != nil {
 		t.Fatal(err)

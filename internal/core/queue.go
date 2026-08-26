@@ -14,7 +14,7 @@ import (
 
 // Config is a queue's immutable configuration.
 type Config struct {
-	Order          string  `json:"order"`            // "fifo" | "lifo" — the ready-heap tie-break
+	Order          string  `json:"order"`            // "fifo" | "lifo" - the ready-heap tie-break
 	AgingRate      float64 `json:"aging_rate"`       // priority points gained per second of waiting; 0 disables aging
 	MaxDeliveries  uint32  `json:"max_deliveries"`   // move to DLQ after this many delivery attempts; 0 = unlimited
 	DefaultLeaseMS int64   `json:"default_lease_ms"` // lease when dequeue doesn't specify one
@@ -208,7 +208,7 @@ func (q *Queue) migrateDueLocked(nowMicros int64) {
 }
 
 // notifyLocked wakes up to n parked dequeuers, front of the line first. One
-// wakeup per newly-ready message — waking everyone would just stampede the
+// wakeup per newly-ready message - waking everyone would just stampede the
 // mutex.
 func (q *Queue) notifyLocked(n int) {
 	for i := 0; i < n && len(q.waiters) > 0; i++ {
@@ -343,7 +343,7 @@ func (q *Queue) applyDelete() {
 
 // Dequeue pops up to max ready messages under fresh leases, long-polling up
 // to wait when the queue is empty. The waiting goroutine is the HTTP handler
-// itself — nothing is spawned, so nothing can leak. Registration happens
+// itself - nothing is spawned, so nothing can leak. Registration happens
 // under the same mutex as insertion+notify, so wakeups cannot be lost.
 func (q *Queue) Dequeue(ctx context.Context, max int, wait, leaseDur time.Duration) ([]Delivery, error) {
 	if max <= 0 {
@@ -428,7 +428,7 @@ type requeueAction struct {
 }
 
 // reserveRequeueLocked removes the lease entry and marks the message pending.
-// This removal under q.mu — BEFORE anything is logged — is the serialization
+// This removal under q.mu - BEFORE anything is logged - is the serialization
 // point between ack, nack and sweeper expiry: whoever wins the mutex owns the
 // transition, the loser finds no lease entry and backs off, and the log can
 // never contain conflicting records for one delivery.

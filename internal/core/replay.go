@@ -11,7 +11,7 @@ import (
 var errReplayLimit = errors.New("replay limit reached")
 
 // ReplayResult reports what a time-travel replay did. WindowStart is the
-// oldest record still retained in the log — the honest replay horizon.
+// oldest record still retained in the log - the honest replay horizon.
 type ReplayResult struct {
 	Replayed    int
 	WindowStart time.Time
@@ -20,12 +20,12 @@ type ReplayResult struct {
 // Replay is the third layer of franq's replay story: because the WAL retains
 // history until retention-driven compaction, previously ACKed messages can be
 // re-enqueued as fresh copies (new id, OriginID pointing at the source).
-// Kafka-style replay in a queue — SQS cannot do this.
+// Kafka-style replay in a queue - SQS cannot do this.
 //
 // Scans sealed segments fully and the active segment up to its committed
 // offset; segment deletion is blocked for the duration. Messages still live
 // in the queue are skipped. Replay is not atomic with respect to concurrent
-// traffic — it re-runs history, it doesn't freeze the present.
+// traffic - it re-runs history, it doesn't freeze the present.
 func (b *Broker) Replay(q *Queue, from, to time.Time, limit int) (ReplayResult, error) {
 	if limit <= 0 {
 		limit = 1000

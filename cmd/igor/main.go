@@ -17,7 +17,7 @@ import (
 )
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `igor — the franq lab assistant
+	fmt.Fprintf(os.Stderr, `igor - the franq lab assistant
 
 usage: igor [-addr URL] <command> [flags]
 
@@ -43,7 +43,7 @@ func main() {
 	}
 	c := client.New(*addr)
 	if err := c.Health(); err != nil {
-		fmt.Fprintf(os.Stderr, "igor: cannot reach franqd at %s — is it running? (%v)\n", *addr, err)
+		fmt.Fprintf(os.Stderr, "igor: cannot reach franqd at %s - is it running? (%v)\n", *addr, err)
 		os.Exit(1)
 	}
 
@@ -88,7 +88,7 @@ func cmdCreate(c *client.Client, args []string) error {
 	}); err != nil {
 		return err
 	}
-	fmt.Printf("created %s (order=%s aging=%.2f max_deliveries=%d) — plus %s.dlq\n",
+	fmt.Printf("created %s (order=%s aging=%.2f max_deliveries=%d) - plus %s.dlq\n",
 		*q, *order, *aging, *maxDel, *q)
 	return nil
 }
@@ -170,7 +170,7 @@ func cmdWork(c *client.Client, args []string) error {
 	if *q == "" {
 		return fmt.Errorf("-q required")
 	}
-	fmt.Printf("igor: %d worker(s) on %q, fail rate %.0f%% — Ctrl-C to stop\n", *n, *q, *failRate*100)
+	fmt.Printf("igor: %d worker(s) on %q, fail rate %.0f%% - Ctrl-C to stop\n", *n, *q, *failRate*100)
 	stop := make(chan struct{})
 	go func() {
 		sig := make(chan os.Signal, 1)
@@ -199,7 +199,7 @@ func cmdWork(c *client.Client, args []string) error {
 				}
 				for _, m := range msgs {
 					if rng.Float64() < *failRate {
-						fmt.Printf("worker-%d: 💥 botched %q (delivery #%d) — nacking\n", w, m.Body, m.Deliveries)
+						fmt.Printf("worker-%d: 💥 botched %q (delivery #%d) - nacking\n", w, m.Body, m.Deliveries)
 						c.Nack(*q, m.ID, m.Token, 500)
 						continue
 					}
