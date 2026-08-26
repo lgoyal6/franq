@@ -11,6 +11,12 @@ franqd: it's alive ⚡ listening on [::]:1818, data in ./franq-data
 
 (Port 1818: the year *Frankenstein* was published.)
 
+![five self-checking scenarios](demo.gif)
+
+Every scenario above asserts its own outcome and prints PASS, so the recording cannot
+show a passing run of a broken build. Reproduce it with `vhs demo.tape`, or just run
+`./bin/igor demo all`.
+
 ## What it is
 
 An HTTP application that is a queue - where the behaviors compose instead of being
