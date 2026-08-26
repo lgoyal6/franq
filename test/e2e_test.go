@@ -1,4 +1,4 @@
-// Package franqtest runs the full stack — broker, WAL, HTTP server, client —
+// Package franqtest runs the full stack - broker, WAL, HTTP server, client -
 // in-process against real sockets and real files.
 package franqtest
 
@@ -132,7 +132,7 @@ func TestE2ELongPollWakeup(t *testing.T) {
 	}
 	// The poller must be woken by the enqueue, not by its 10s timeout.
 	if r.elapsed > 3*time.Second {
-		t.Fatalf("long poll took %v — waiter never woke", r.elapsed)
+		t.Fatalf("long poll took %v - waiter never woke", r.elapsed)
 	}
 }
 

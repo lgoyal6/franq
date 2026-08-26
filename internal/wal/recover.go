@@ -16,7 +16,7 @@ type RecoverResult struct {
 
 // Recover rebuilds state: newest valid snapshot first (via applySnap), then
 // every segment after it in order (via applyRec, one decoded record at a
-// time). A torn tail in the LAST segment is truncated — safe because nothing
+// time). A torn tail in the LAST segment is truncated - safe because nothing
 // is externally observable before its record is fsynced, so a truncated tail
 // only ever contains operations no client was told succeeded. Damage anywhere
 // else is real corruption and refuses startup.

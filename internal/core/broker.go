@@ -400,7 +400,7 @@ func (b *Broker) DeleteQueue(name string) error {
 	return req.Wait()
 }
 
-// GetQueue resolves a queue by name (DLQs included — they're inspectable).
+// GetQueue resolves a queue by name (DLQs included - they're inspectable).
 func (b *Broker) GetQueue(name string) (*Queue, bool) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -451,8 +451,8 @@ type EnqueueItem struct {
 	originID uint64 // internal: set by DLQ moves and replay
 }
 
-// Enqueue durably appends a batch of messages. IDs are returned after — and
-// only after — the records are fsynced and applied: nothing is externally
+// Enqueue durably appends a batch of messages. IDs are returned after - and
+// only after - the records are fsynced and applied: nothing is externally
 // observable before its record is durable.
 func (b *Broker) Enqueue(q *Queue, items []EnqueueItem) ([]uint64, error) {
 	if len(items) == 0 {
@@ -511,7 +511,7 @@ func (b *Broker) submitAck(q *Queue, id uint64) error {
 
 // submitRequeue logs a reserved lease transition: either back into the queue
 // (REQUEUE) or into the DLQ. The DLQ move is ENQUEUE-into-dlq followed by
-// ACK-of-original in that order — add before remove — so a torn tail between
+// ACK-of-original in that order - add before remove - so a torn tail between
 // the two yields a duplicate, never a loss.
 func (b *Broker) submitRequeue(q *Queue, act requeueAction) error {
 	if act.toDLQ {

@@ -2,7 +2,7 @@ package core
 
 // msgHeap is a binary heap of messages with positional removal via
 // message.heapIdx. One instance is used max-first for the ready set and
-// min-first for the delay set — the less function decides.
+// min-first for the delay set - the less function decides.
 type msgHeap struct {
 	items []*message
 	less  func(a, b *message) bool

@@ -224,7 +224,7 @@ func TestRecoverTruncatesTornTail(t *testing.T) {
 	if count != 3 || res.TornTails != 1 {
 		t.Fatalf("recovered %d records, %d torn tails; want 3 and 1", count, res.TornTails)
 	}
-	// Second recovery must be clean — the tail was physically truncated.
+	// Second recovery must be clean - the tail was physically truncated.
 	count = 0
 	res, err = Recover(walDir, snapDir, func(*Snapshot) error { return nil }, func(any) error { count++; return nil })
 	if err != nil || count != 3 || res.TornTails != 0 {

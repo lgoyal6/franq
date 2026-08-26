@@ -1,7 +1,7 @@
 package core
 
 // effKey is the ready-heap ordering key, and the reason franq has no
-// FIFO/LIFO/priority/delay code paths — only this number and a seq tie-break.
+// FIFO/LIFO/priority/delay code paths - only this number and a seq tie-break.
 //
 // Linear priority aging says a message's effective priority at time t is
 // p + λ·(t − start). Comparing two messages:

@@ -18,7 +18,7 @@ var demos = []struct {
 	{"priority", "a VIP job jumps a backlog", demoPriority},
 	{"delay", "delayed jobs surface on schedule", demoDelay},
 	{"crash", "a worker dies mid-job; the job replays elsewhere", demoCrash},
-	{"starvation", "LIFO+priority starves an old job — aging rescues it", demoStarvation},
+	{"starvation", "LIFO+priority starves an old job - aging rescues it", demoStarvation},
 	{"timetravel", "replay already-completed jobs from WAL history", demoTimeTravel},
 }
 
@@ -34,7 +34,7 @@ func cmdDemo(c *client.Client, args []string) error {
 			continue
 		}
 		ran++
-		fmt.Printf("\n══ demo %s — %s ══\n", d.name, d.desc)
+		fmt.Printf("\n══ demo %s - %s ══\n", d.name, d.desc)
 		if err := d.fn(c); err != nil {
 			fmt.Printf("── FAIL: %v\n", err)
 			failed++
@@ -73,7 +73,7 @@ func demoPriority(c *client.Client) error {
 	if _, err := c.Enqueue(q, []client.EnqueueMsg{{Body: "VIP", Priority: 9}}); err != nil {
 		return err
 	}
-	fmt.Println("   queued 1 VIP job (priority 9) — last in line, timewise")
+	fmt.Println("   queued 1 VIP job (priority 9) - last in line, timewise")
 	msgs, err := c.Dequeue(q, 6, 0, 30_000)
 	if err != nil {
 		return err
@@ -116,7 +116,7 @@ func demoDelay(c *client.Client) error {
 		return fmt.Errorf("expected only the espresso immediately, got %d messages", len(msgs))
 	}
 	c.Ack(q, msgs[0].ID, msgs[0].Token)
-	fmt.Println("   immediate dequeue: espresso only — cold-brew is invisible")
+	fmt.Println("   immediate dequeue: espresso only - cold-brew is invisible")
 	msgs, err = c.Dequeue(q, 1, 5000, 30_000)
 	if err != nil {
 		return err
@@ -151,7 +151,7 @@ func demoCrash(c *client.Client) error {
 	if err != nil || len(redelivered) != 1 {
 		return fmt.Errorf("worker-2 never got the redelivery: %v", err)
 	}
-	fmt.Printf("   worker-2 received %q after %v — delivery #%d\n",
+	fmt.Printf("   worker-2 received %q after %v - delivery #%d\n",
 		redelivered[0].Body, time.Since(start).Round(10*time.Millisecond), redelivered[0].Deliveries)
 	if redelivered[0].ID != msgs[0].ID || redelivered[0].Deliveries != 2 {
 		return fmt.Errorf("redelivery mismatch: %+v", redelivered[0])
@@ -166,8 +166,8 @@ func demoCrash(c *client.Client) error {
 	return nil
 }
 
-// demoStarvation runs identical traffic through two queues — one plain, one
-// with aging — and shows the difference: a priority-0 job under a stream of
+// demoStarvation runs identical traffic through two queues - one plain, one
+// with aging - and shows the difference: a priority-0 job under a stream of
 // priority-5 work starves forever without aging, and climbs out with it.
 func demoStarvation(c *client.Client) error {
 	run := func(q string, aging float64) (served bool, waited time.Duration, err error) {
@@ -209,7 +209,7 @@ func demoStarvation(c *client.Client) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("   λ=0  (no aging): neglected served? %v — starved behind every hotshot\n", served)
+	fmt.Printf("   λ=0  (no aging): neglected served? %v - starved behind every hotshot\n", served)
 	if served {
 		return fmt.Errorf("without aging the pri-0 job should starve during the stream")
 	}
@@ -220,7 +220,7 @@ func demoStarvation(c *client.Client) error {
 	if !servedAged {
 		return fmt.Errorf("with aging the pri-0 job should have been served")
 	}
-	fmt.Printf("   λ=10 (aging on): neglected served after %v — earned +%.1f effective priority and won\n",
+	fmt.Printf("   λ=10 (aging on): neglected served after %v - earned +%.1f effective priority and won\n",
 		waited.Round(10*time.Millisecond), waited.Seconds()*10)
 	return nil
 }
@@ -245,7 +245,7 @@ func demoTimeTravel(c *client.Client) error {
 		}
 	}
 	st, _ := c.Stats(q)
-	fmt.Printf("   processed & acked 3 orders — queue empty (ready=%d), history retained in the WAL\n", st.Ready)
+	fmt.Printf("   processed & acked 3 orders - queue empty (ready=%d), history retained in the WAL\n", st.Ready)
 	res, err := c.Replay(q, "", "", 100)
 	if err != nil {
 		return err
@@ -265,6 +265,6 @@ func demoTimeTravel(c *client.Client) error {
 		}
 		c.Ack(q, m.ID, m.Token)
 	}
-	fmt.Println("   same jobs, new identities — SQS cannot do this")
+	fmt.Println("   same jobs, new identities - SQS cannot do this")
 	return nil
 }

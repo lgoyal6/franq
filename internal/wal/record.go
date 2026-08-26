@@ -1,6 +1,6 @@
 // Package wal is franq's storage engine: an append-only, CRC-framed
 // write-ahead log with group commit, segment rotation, snapshots and
-// crash recovery. No database underneath — files and fsync only.
+// crash recovery. No database underneath - files and fsync only.
 package wal
 
 import (
@@ -251,7 +251,7 @@ func Decode(p []byte) (any, error) {
 
 // Scan walks consecutive frames in buf, calling fn for each payload whose CRC
 // verifies, and returns the number of bytes covered by valid frames. Scanning
-// stops — without error — at a short tail, a zero length prefix (a zero-filled
+// stops - without error - at a short tail, a zero length prefix (a zero-filled
 // region from a crash must read as end-of-log, not as an endless stream of
 // empty records), an oversized or over-long length, or a CRC mismatch. The
 // caller compares the returned offset against the buffer length to classify
