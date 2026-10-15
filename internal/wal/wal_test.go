@@ -1,11 +1,17 @@
 package wal
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func newDirs(t testing.TB) (walDir, snapDir string) {
@@ -194,6 +200,147 @@ func TestSnapshotWriteLoadPrune(t *testing.T) {
 	}
 }
 
+func TestSnapshotStorageFailuresKeepPreviousSnapshot(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		set  func(error)
+		err  error
+	}{
+		{name: "write-enospc", err: syscall.ENOSPC, set: func(err error) {
+			snapshotWrite = func(*os.File, []byte) (int, error) { return 0, err }
+		}},
+		{name: "short-write", err: io.ErrShortWrite, set: func(error) {
+			snapshotWrite = func(*os.File, []byte) (int, error) { return 1, nil }
+		}},
+		{name: "file-fsync", err: errors.New("injected fsync error"), set: func(err error) {
+			snapshotSync = func(*os.File) error { return err }
+		}},
+		{name: "rename", err: errors.New("injected rename error"), set: func(err error) {
+			snapshotRename = func(string, string) error { return err }
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, snapDir := newDirs(t)
+			if err := WriteSnapshot(snapDir, &Snapshot{LastSeg: 3, NextMsgID: 10}); err != nil {
+				t.Fatal(err)
+			}
+			oldWrite, oldSync, oldRename := snapshotWrite, snapshotSync, snapshotRename
+			t.Cleanup(func() { snapshotWrite, snapshotSync, snapshotRename = oldWrite, oldSync, oldRename })
+			tc.set(tc.err)
+			if err := WriteSnapshot(snapDir, &Snapshot{LastSeg: 9, NextMsgID: 20}); !errors.Is(err, tc.err) {
+				t.Fatalf("WriteSnapshot error = %v, want %v", err, tc.err)
+			}
+			snapshotWrite, snapshotSync, snapshotRename = oldWrite, oldSync, oldRename
+			got, err := LoadLatestSnapshot(snapDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got == nil || got.LastSeg != 3 || got.NextMsgID != 10 {
+				t.Fatalf("previous snapshot not retained: %+v", got)
+			}
+		})
+	}
+}
+
+func TestSnapshotWriteFullLengthWithNilError(t *testing.T) {
+	_, snapDir := newDirs(t)
+	oldWrite := snapshotWrite
+	t.Cleanup(func() { snapshotWrite = oldWrite })
+	snapshotWrite = func(f *os.File, data []byte) (int, error) {
+		return f.Write(data)
+	}
+	want := &Snapshot{LastSeg: 7, NextMsgID: 12}
+	if err := WriteSnapshot(snapDir, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadLatestSnapshot(snapDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || got.LastSeg != want.LastSeg || got.NextMsgID != want.NextMsgID {
+		t.Fatalf("loaded snapshot = %+v, want %+v", got, want)
+	}
+}
+
+func TestAbandonedWaitDoesNotCancelAcceptedCommit(t *testing.T) {
+	walDir, snapDir := newDirs(t)
+	enteredSync := make(chan struct{})
+	releaseSync := make(chan struct{})
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(releaseSync) }) }
+	oldSync := segmentSync
+	segmentSync = func(f *os.File) error {
+		close(enteredSync)
+		<-releaseSync
+		return f.Sync()
+	}
+	t.Cleanup(func() {
+		segmentSync = oldSync
+		unblock()
+	})
+
+	l, err := OpenLog(walDir, 1, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applyWG sync.WaitGroup
+	applyWG.Add(1)
+	go func() {
+		defer applyWG.Done()
+		for batch := range l.Batches() {
+			for _, req := range batch.Reqs {
+				req.Apply()
+				req.Finish(nil)
+			}
+		}
+	}()
+
+	var applied atomic.Bool
+	req, err := l.Submit(AppendEnqueue(nil, &Enqueue{QueueID: 1, MsgID: 7, Body: []byte("accepted before disconnect")}), func() {
+		applied.Store(true)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-enteredSync
+	handlerDone := make(chan error, 1)
+	go func() { handlerDone <- req.Wait() }()
+
+	// Model the client disconnect by leaving the handler's response unread
+	// while fsync is blocked. The accepted WAL request remains committer-owned.
+	select {
+	case err := <-handlerDone:
+		t.Fatalf("handler completed before blocked fsync: %v", err)
+	default:
+	}
+	if applied.Load() {
+		t.Fatal("request was applied before fsync completed")
+	}
+
+	unblock()
+	segmentSync = oldSync
+	if err := <-handlerDone; err != nil {
+		t.Fatal(err)
+	}
+	if !applied.Load() {
+		t.Fatal("accepted request was not applied after fsync")
+	}
+	l.Close()
+	applyWG.Wait()
+	got, err := Recover(walDir, snapDir, func(*Snapshot) error { return nil }, func(rec any) error {
+		if e, ok := rec.(*Enqueue); !ok || e.MsgID != 7 {
+			t.Fatalf("recovered record = %#v, want enqueue 7", rec)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Records != 1 {
+		t.Fatalf("recovered records = %d, want 1", got.Records)
+	}
+}
+
 func TestRecoverTruncatesTornTail(t *testing.T) {
 	walDir, snapDir := newDirs(t)
 	l, err := OpenLog(walDir, 1, Options{})
@@ -283,4 +430,139 @@ func BenchmarkCommitGroup64(b *testing.B) {
 	b.StopTimer()
 	l.Close()
 	wg.Wait()
+}
+
+// BenchmarkCommitMatrix compares fsync-per-request with bounded group commit
+// under the same 128-byte append workload and local filesystem.
+func BenchmarkCommitMatrix(b *testing.B) {
+	for _, batchCap := range []int{1, 16, 64} {
+		for _, producers := range []int{1, 8, 64} {
+			b.Run(fmt.Sprintf("batch_cap=%d/producers=%d", batchCap, producers), func(b *testing.B) {
+				walDir, _ := newDirs(b)
+				l, err := OpenLog(walDir, 1, Options{MaxBatchRecords: batchCap})
+				if err != nil {
+					b.Fatal(err)
+				}
+				var applyWG sync.WaitGroup
+				applyWG.Add(1)
+				go drainApplier(l, &applyWG)
+				frames := AppendEnqueue(nil, &Enqueue{QueueID: 1, MsgID: 1, Body: make([]byte, 128)})
+				b.SetBytes(int64(len(frames)))
+				b.ReportAllocs()
+				b.ResetTimer()
+				var next atomic.Uint64
+				var producersWG sync.WaitGroup
+				producersWG.Add(producers)
+				for range producers {
+					go func() {
+						defer producersWG.Done()
+						for {
+							if next.Add(1) > uint64(b.N) {
+								return
+							}
+							req, err := l.Submit(frames, nil)
+							if err != nil {
+								b.Error(err)
+								return
+							}
+							if err := req.Wait(); err != nil {
+								b.Error(err)
+								return
+							}
+						}
+					}()
+				}
+				producersWG.Wait()
+				b.StopTimer()
+				l.Close()
+				applyWG.Wait()
+				b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "records/s")
+			})
+		}
+	}
+}
+
+func TestCommitLatencyMatrix(t *testing.T) {
+	if os.Getenv("B7_LATENCY_STUDY") != "1" {
+		t.Skip("set B7_LATENCY_STUDY=1 to run the serialized latency study")
+	}
+	for _, cap := range []int{1, 16, 64} {
+		for _, producers := range []int{1, 8, 64} {
+			for repetition := 1; repetition <= 3; repetition++ {
+				t.Run(fmt.Sprintf("batch_cap=%d/producers=%d/repetition=%d", cap, producers, repetition), func(t *testing.T) {
+					latencies := runCommitLatencyTrial(t, cap, producers, 2*time.Second)
+					sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+					if len(latencies) == 0 {
+						t.Fatal("latency trial recorded no committed requests")
+					}
+					quantile := func(q float64) float64 {
+						index := int(q * float64(len(latencies)-1))
+						return float64(latencies[index]) / float64(time.Millisecond)
+					}
+					t.Logf("B7_LATENCY_RESULT cap=%d producers=%d repetition=%d requests=%d p50_ms=%.3f p95_ms=%.3f p99_ms=%.3f", cap, producers, repetition, len(latencies), quantile(.50), quantile(.95), quantile(.99))
+				})
+			}
+		}
+	}
+}
+
+func runCommitLatencyTrial(t *testing.T, batchCap, producers int, duration time.Duration) []time.Duration {
+	t.Helper()
+	walDir, _ := newDirs(t)
+	l, err := OpenLog(walDir, 1, Options{MaxBatchRecords: batchCap})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applier sync.WaitGroup
+	applier.Add(1)
+	go func() {
+		defer applier.Done()
+		for batch := range l.Batches() {
+			for _, req := range batch.Reqs {
+				req.Apply()
+				req.Finish(nil)
+			}
+		}
+	}()
+	start := make(chan struct{})
+	stop := make(chan struct{})
+	perProducer := make([][]time.Duration, producers)
+	var workers sync.WaitGroup
+	var nextID atomic.Uint64
+	workers.Add(producers)
+	for i := 0; i < producers; i++ {
+		go func(i int) {
+			defer workers.Done()
+			<-start
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				began := time.Now()
+				req, err := l.Submit(AppendEnqueue(nil, &Enqueue{QueueID: 1, MsgID: nextID.Add(1), Body: []byte("latency")}), nil)
+				if err != nil {
+					t.Errorf("Submit: %v", err)
+					return
+				}
+				if err := req.Wait(); err != nil {
+					t.Errorf("Wait: %v", err)
+					return
+				}
+				perProducer[i] = append(perProducer[i], time.Since(began))
+			}
+		}(i)
+	}
+	close(start)
+	time.Sleep(duration)
+	close(stop)
+	workers.Wait()
+	l.Close()
+	applier.Wait()
+	var all []time.Duration
+	for _, samples := range perProducer {
+		all = append(all, samples...)
+	}
+	return all
 }

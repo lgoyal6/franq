@@ -373,6 +373,88 @@ func TestFailpoints(t *testing.T) {
 	}
 }
 
+// TestSeededCrashSweep exercises deterministic crash points in the WAL commit,
+// segment rotation, and snapshot publication path. Each seed preserves two
+// acknowledged enqueues before the injected crash, then proves they recover.
+func TestSeededCrashSweep(t *testing.T) {
+	if testing.Short() {
+		t.Skip("seeded crash sweep skipped in -short mode")
+	}
+	points := []string{"after-commit:4", "after-rotate:1", "mid-snapshot:1"}
+	for seed := 0; seed < 100; seed++ {
+		seed := seed
+		t.Run(fmt.Sprintf("seed-%03d", seed), func(t *testing.T) {
+			dataDir := t.TempDir()
+			fp := points[seed%len(points)]
+			p := startServer(t, dataDir, "FRANQ_FAILPOINT="+fp)
+			c := client.New("http://" + p.addr)
+			queue := fmt.Sprintf("sweep-%03d", seed)
+			if err := c.CreateQueue(client.QueueConfig{Name: queue}); err != nil {
+				t.Fatal(err)
+			}
+			confirmed := []string{}
+			for i := 0; i < 2; i++ {
+				body := fmt.Sprintf("seed-%03d-confirmed-%d", seed, i)
+				if _, err := c.Enqueue(queue, []client.EnqueueMsg{{Body: body}}); err != nil {
+					t.Fatalf("seed %d pre-crash enqueue %d: %v", seed, i, err)
+				}
+				confirmed = append(confirmed, body)
+			}
+			rng := rand.New(rand.NewSource(int64(seed)))
+			n := 300 + rng.Intn(100)
+			batch := make([]client.EnqueueMsg, n)
+			for i := range batch {
+				batch[i] = client.EnqueueMsg{Body: fmt.Sprintf("seed-%03d-%03d-%016x-%s", seed, i, rng.Uint64(), strings.Repeat("x", 96))}
+			}
+			_, enqueueErr := c.Enqueue(queue, batch)
+			if enqueueErr == nil {
+				for _, msg := range batch {
+					confirmed = append(confirmed, msg.Body)
+				}
+			}
+
+			done := make(chan struct{})
+			go func() { _ = p.cmd.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				_ = p.cmd.Process.Kill()
+				<-done
+				t.Fatalf("seed %d failpoint %s did not terminate the server; enqueue error: %v", seed, fp, enqueueErr)
+			}
+			if !strings.Contains(p.stderr.String(), "failpoint ") {
+				t.Fatalf("seed %d exited without a failpoint hit: %s", seed, p.stderr.String())
+			}
+
+			p2 := startServer(t, dataDir)
+			defer p2.kill()
+			c2 := client.New("http://" + p2.addr)
+			seen := map[string]bool{}
+			for {
+				msgs, err := c2.Dequeue(queue, 100, 100, 10_000)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(msgs) == 0 {
+					break
+				}
+				for _, msg := range msgs {
+					seen[msg.Body] = true
+					if err := c2.Ack(queue, msg.ID, msg.Token); err != nil && !client.IsCode(err, "lease_lost") {
+						t.Fatalf("seed %d ack: %v", seed, err)
+					}
+				}
+			}
+			for _, body := range confirmed {
+				if !seen[body] {
+					t.Fatalf("seed %d failpoint %s lost confirmed enqueue %q", seed, fp, body)
+				}
+			}
+			t.Logf("seed=%d failpoint=%s confirmed=%d batch=%d", seed, fp, len(confirmed), n)
+		})
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

@@ -11,6 +11,8 @@ import (
 // ErrClosed is returned by Submit after Close.
 var ErrClosed = errors.New("wal: log closed")
 
+var segmentSync = func(f *os.File) error { return f.Sync() }
+
 // Options tunes the log. Zero values pick sane defaults.
 type Options struct {
 	SegmentBytes    int64 // rotate when a segment reaches this size (default 64 MiB)
@@ -162,7 +164,7 @@ func (l *Log) run() {
 		if _, err := l.seg.Write(l.buf); err != nil {
 			l.poison(reqs, err)
 		}
-		if err := l.seg.Sync(); err != nil {
+		if err := segmentSync(l.seg); err != nil {
 			l.poison(reqs, err)
 		}
 		l.segSize += int64(len(l.buf))

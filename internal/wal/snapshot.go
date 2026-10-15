@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +17,12 @@ const (
 	snapMagic   = "FRQSNP01"
 	snapVersion = 1
 	snapSuffix  = ".snap"
+)
+
+var (
+	snapshotWrite  = func(f *os.File, data []byte) (int, error) { return f.Write(data) }
+	snapshotSync   = func(f *os.File) error { return f.Sync() }
+	snapshotRename = os.Rename
 )
 
 // SnapMsg is one message in a snapshot. Leased and reservation-pending
@@ -150,11 +157,17 @@ func WriteSnapshot(dir string, s *Snapshot) error {
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(EncodeSnapshot(s)); err != nil {
+	data := EncodeSnapshot(s)
+	n, err := snapshotWrite(f, data)
+	if err != nil {
 		f.Close()
 		return err
 	}
-	if err := f.Sync(); err != nil {
+	if n != len(data) {
+		f.Close()
+		return io.ErrShortWrite
+	}
+	if err := snapshotSync(f); err != nil {
 		f.Close()
 		return err
 	}
@@ -163,7 +176,7 @@ func WriteSnapshot(dir string, s *Snapshot) error {
 	}
 	failpoint("mid-snapshot")
 	final := filepath.Join(dir, snapshotName(s.LastSeg))
-	if err := os.Rename(tmp, final); err != nil {
+	if err := snapshotRename(tmp, final); err != nil {
 		return err
 	}
 	if err := fsyncDir(dir); err != nil {
