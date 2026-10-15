@@ -1,0 +1,17 @@
+name: Offline contracts
+on: [push, pull_request]
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    env:
+      GOMAXPROCS: '2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          go build ./...
+          go vet ./...
+          go test -count=1 -p 2 -race ./...
+          go test -count=1 -p 2 -race -tags=testhooks ./internal/... ./test
