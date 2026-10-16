@@ -1,0 +1,21 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+globalThis.crypto ||= require('node:crypto').webcrypto;
+require('./wasm_exec.js');
+(async () => {
+ const go = new Go();
+ const {instance} = await WebAssembly.instantiate(fs.readFileSync(__dirname+'/engine.wasm'),go.importObject);
+ go.run(instance).catch(error => { console.error(error); process.exit(1); });
+ const evaluate = input => JSON.parse(publicDemo(JSON.stringify(input)));
+ const jobs=[{label:'Old',priority:0,start_ms:0,delay_ms:0},{label:'New',priority:5,start_ms:1000,delay_ms:0},{label:'A',priority:0,start_ms:1000,delay_ms:0},{label:'B',priority:0,start_ms:1000,delay_ms:0},{label:'Later',priority:9,start_ms:1000,delay_ms:4000}];
+ const base={jobs,order:'fifo',aging:0,now_ms:2000};
+ assert.deepEqual(evaluate(base).order,['New','Old','A','B']);
+ assert.deepEqual(evaluate({...base,order:'lifo'}).order,['New','B','A','Old']);
+ assert.equal(evaluate({...base,aging:10}).order[0],'Old');
+ assert.equal(evaluate(base).waiting,1);
+ assert.equal(evaluate({...base,now_ms:5000}).order[0],'Later');
+ assert.ok(evaluate({...base,aging:21}).error);
+ assert.ok(evaluate({...base,jobs:Array(25).fill(jobs[0])}).error);
+ console.log('PASS: native FIFO/LIFO, aging, delayed visibility, time advance and input bounds');
+ process.exit(0);
+})().catch(error=>{console.error(error);process.exit(1);});
